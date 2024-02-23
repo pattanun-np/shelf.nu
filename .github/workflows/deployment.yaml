@@ -1,0 +1,44 @@
+name: Deploy Harbour Space UTCC ASM App to Production
+
+on:
+  push:
+    tags:
+      - "v*.*.*-p"
+
+env:
+  DEPLOYMENT_FRONTEND_ADMIN: hs-assets-admin
+  PROJECT_ID: standupcodeservices
+
+jobs:
+  build-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - id: "auth"
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.GCP_CREDENTIALS }}"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker to use the gcloud command-line tool as a credential helper
+        run: |-
+          # Set up docker to authenticate
+          # via gcloud command-line tool.
+          gcloud auth configure-docker
+
+      - name: Build Image hs-assets-admin
+        run: docker build
+          -t asia.gcr.io/$PROJECT_ID/$DEPLOYMENT_FRONTEND_ADMIN
+          ./
+
+      # Configure docker to use the gcloud command-line tool as a credential helper
+      - name: Configure gcloud
+        run: |
+          gcloud auth configure-docker -q
+      # Push image to Google Container Registry
+      - name: push-image-hs-assets-admin
+        run: |-
+          docker push asia.gcr.io/$PROJECT_ID/$DEPLOYMENT_FRONTEND_ADMIN

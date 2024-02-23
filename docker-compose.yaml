@@ -1,0 +1,19 @@
+version: "3.8"
+services:
+  
+  app:
+    image: asia.gcr.io/standupcodeservices/hs-assets-admin:latest
+    container_name: hs-assets-admin
+    pull_policy: if_not_present
+    restart: always
+    ports:
+      - "8080:8080"
+    networks:
+      - nginx
+    env_file:
+      - .env
+    
+ 
+networks:
+  nginx:
+    external: true
