@@ -12,6 +12,8 @@ ADD . .
 
 RUN npm install 
 
+RUN npm install --os=linux --cpu=x64 sharp
+
 RUN npm prune 
 
 RUN npx prisma generate
