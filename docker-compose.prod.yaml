@@ -2,9 +2,7 @@ version: "3.8"
 services:
   
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: asia.gcr.io/standupcodeservices/hs-assets-admin:latest
     container_name: hs-assets-admin
     pull_policy: if_not_present
     restart: always

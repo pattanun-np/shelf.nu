@@ -1,31 +1,57 @@
 # base node image
 FROM node:20-bookworm-slim as base
 
+# set for base and all layer that inherit from it
+ENV NODE_ENV production
+
 # Install openssl for Prisma
-RUN apt-get update && apt-get install -y openssl && apt-get install -y python3 && apt-get install -y build-essential    
+RUN apt-get update && apt-get install -y openssl
+
+# Install all node_modules, including dev dependencies
+FROM base as deps
 
 WORKDIR /myapp
 
 ADD package.json ./
+RUN npm install --production=false
 
-ADD . .
+# Setup production node_modules
+FROM base as production-deps
 
-RUN npm install 
+WORKDIR /myapp
 
-RUN npm install --os=linux --cpu=x64 sharp
+COPY --from=deps /myapp/node_modules /myapp/node_modules
+ADD package.json ./
+RUN npm prune --production
 
-RUN npm prune 
+# Build the app
+FROM base as build
 
+WORKDIR /myapp
+
+COPY --from=deps /myapp/node_modules /myapp/node_modules
+
+ADD /app/database/schema.prisma .
 RUN npx prisma generate
 
+ADD . .
 RUN npm run build
 
-ENV NODE_ENV="production"
+# Finally, build the production image with minimal footprint
+FROM base
 
 ENV PORT="8080"
+ENV NODE_ENV="production"
 
-USER root 
+WORKDIR /myapp
 
-EXPOSE 8080
+COPY --from=production-deps /myapp/node_modules /myapp/node_modules
+COPY --from=build /myapp/node_modules/.prisma /myapp/node_modules/.prisma
 
-CMD ["npm", "run", "start"]
+COPY --from=build /myapp/build /myapp/build
+COPY --from=build /myapp/public /myapp/public
+COPY --from=build /myapp/package.json /myapp/package.json
+COPY --from=build /myapp/start.sh /myapp/start.sh
+RUN chmod +x /myapp/start.sh
+
+ENTRYPOINT [ "./start.sh" ]
