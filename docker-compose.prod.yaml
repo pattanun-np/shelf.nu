@@ -7,5 +7,11 @@ services:
     restart: always
     ports:
       - "8080:3000"
+    networks:
+      - nginx
     env_file:
       - .env
+
+networks:
+  nginx:
+    external: true
