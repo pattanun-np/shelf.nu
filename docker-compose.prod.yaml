@@ -1,6 +1,5 @@
 version: "3.8"
 services:
-  
   app:
     image: asia.gcr.io/standupcodeservices/hs-assets-admin:latest
     container_name: hs-assets-admin
@@ -12,8 +11,7 @@ services:
       - nginx
     env_file:
       - .env
-    
- 
+
 networks:
   nginx:
     external: true
