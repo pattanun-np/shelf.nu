@@ -8,6 +8,6 @@ services:
     pull_policy: if_not_present
     restart: always
     ports:
-      - "8080:8080"
+      - "8080:3000"
     env_file:
       - .env
