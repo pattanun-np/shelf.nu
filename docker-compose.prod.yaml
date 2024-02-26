@@ -9,4 +9,3 @@ services:
       - "8080:3000"
     env_file:
       - .env
-
