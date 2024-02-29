@@ -109,7 +109,7 @@ app.use(
       "/api/oss-friends",
       "/api/stripe-webhook",
       "/qr",
-      "/qr/:path*/",
+      "/qr/:path*",
       "/qr/:path*/contact-owner",
       "/qr/:path*/not-logged-in",
     ],
@@ -243,7 +243,6 @@ serve(
           resolve(null);
         });
       });
-      // @ts-expect-error fixed soon
       broadcastDevReady(build);
     }
   }
