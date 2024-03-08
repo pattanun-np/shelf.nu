@@ -1,10 +1,10 @@
 # base node image
-FROM node:20-bookworm-slim as base
+FROM node:20 as base
 
 # Install openssl for Prisma
 RUN apt-get update && apt-get install -y openssl && apt-get install -y python3 && apt-get install -y build-essential    
 
-WORKDIR /myapp
+WORKDIR /
 
 ADD package.json ./
 
