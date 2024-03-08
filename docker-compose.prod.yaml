@@ -11,7 +11,6 @@ services:
     #   - nginx
     env_file:
       - .env
-
 # networks:
 #   nginx:
 #     external: true
