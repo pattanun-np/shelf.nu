@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { CustomFieldType, type CustomField } from "@prisma/client";
+import type { CustomField } from "@prisma/client";
+import { CustomFieldType } from "@prisma/client";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { useAtom } from "jotai";
 import { useZorm } from "react-zorm";
@@ -97,7 +98,7 @@ export const CustomFieldForm = ({
   }>();
 
   return (
-    <Card className="w-min">
+    <Card className="md:w-min">
       <Form
         ref={zo.ref}
         method="post"

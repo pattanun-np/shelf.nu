@@ -1,11 +1,7 @@
 import { useMemo } from "react";
-import {
-  OrganizationRoles,
-  type Custody,
-  type Invite,
-  InviteStatuses,
-  type TeamMember,
-} from "@prisma/client";
+import { OrganizationRoles, InviteStatuses } from "@prisma/client";
+import type { Custody, Invite, TeamMember } from "@prisma/client";
+
 import { json, redirect } from "@remix-run/node";
 import type {
   MetaFunction,
@@ -302,7 +298,7 @@ export const action = async ({ context, request }: ActionFunctionArgs) => {
 };
 
 export const handle = {
-  breadcrumb: () => "single",
+  breadcrumb: () => "Team",
 };
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => [
