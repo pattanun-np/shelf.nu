@@ -104,6 +104,7 @@
     "react-to-print": "^2.15.1",
     "react-zorm": "^0.9.0",
     "react-zxing": "^2.0.0",
+    "remix": "^2.10.3",
     "remix-hono": "^0.0.16",
     "remix-utils": "^7.5.0",
     "sharp": "^0.33.2",
