@@ -12,7 +12,7 @@ export interface ButtonProps {
   className?: string;
   variant?: ButtonVariant;
   width?: ButtonWidth;
-  size?: "sm" | "md";
+  size?: "xs" | "sm" | "md";
   icon?: IconType;
   /** Disabled can be a boolean  */
   disabled?:
@@ -63,6 +63,17 @@ export const Button = React.forwardRef<HTMLElement, ButtonProps>(
       ),
       link: tw(
         `border-none p-0 text-text-sm font-semibold text-primary-700 hover:text-primary-800`
+      ),
+      "block-link": tw(
+        "-mt-1 border-none px-2 py-1 text-[14px] font-normal hover:bg-primary-50 hover:text-primary-600"
+      ),
+
+      "block-link-gray": tw(
+        "-mt-1 border-none px-2 py-1 text-[14px] font-normal hover:bg-gray-50 hover:text-gray-600"
+      ),
+      danger: tw(
+        `border-error-600 bg-error-600 text-white focus:ring-2`,
+        disabled ? "border-error-300 bg-error-300" : "hover:bg-error-800"
       ),
     };
 
@@ -164,7 +175,9 @@ export const Button = React.forwardRef<HTMLElement, ButtonProps>(
               )}
             >
               <span>{children}</span>{" "}
-              {newTab && <ExternalLinkIcon className="mt-px" />}
+              {newTab && (
+                <ExternalLinkIcon className="external-link-icon mt-px" />
+              )}
             </span>
           ) : null}
         </Component>

@@ -28,7 +28,7 @@ export async function loader({ context, request, params }: LoaderFunctionArgs) {
 
   try {
     /* Find the QR in the database */
-    const qr = await getQr(id);
+    const qr = await getQr({ id });
     /**
      * If the QR doesn't exist, getQR will throw a 404
      */
@@ -39,6 +39,7 @@ export async function loader({ context, request, params }: LoaderFunctionArgs) {
      */
     const scan = await createScan({
       userAgent: request.headers.get("user-agent") as string,
+      userId,
       qrId: id,
       deleted: !qr,
     });

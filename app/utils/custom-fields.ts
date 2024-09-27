@@ -1,11 +1,13 @@
+import type { RenderableTreeNode } from "@markdoc/markdoc";
 import type { CustomField, CustomFieldType } from "@prisma/client";
 import { format } from "date-fns";
 import type { ZodRawShape } from "zod";
 import { z } from "zod";
 import type { ShelfAssetCustomFieldValueType } from "~/modules/asset/types";
 import type { ClientHint } from "~/modules/booking/types";
-import { getDateTimeFormatFromHints } from "./client-hints";
+import { formatDateBasedOnLocaleOnly } from "./client-hints";
 import { ShelfError } from "./error";
+import { parseMarkdownToReact } from "./md";
 
 /** Returns the schema depending on the field type.
  * Also handles the required field error message.
@@ -181,10 +183,14 @@ export const buildCustomFieldValue = (
 export const getCustomFieldDisplayValue = (
   value: ShelfAssetCustomFieldValueType["value"],
   hints?: ClientHint
-): string => {
-  if (value.valueDate) {
+): string | RenderableTreeNode => {
+  if (value.valueMultiLineText) {
+    return parseMarkdownToReact(value.raw as string);
+  }
+
+  if (value.valueDate && value.raw) {
     return hints
-      ? getDateTimeFormatFromHints(hints).format(new Date(value.valueDate))
+      ? formatDateBasedOnLocaleOnly(value.valueDate as string, hints.locale)
       : format(new Date(value.valueDate), "PPP"); // Fallback to default date format
   }
   return String(value.raw);
@@ -202,7 +208,8 @@ export const getDefinitionFromCsvHeader = (
   let type =
     defArr.find((e) => e.toLowerCase().startsWith("type:"))?.substring(5) ||
     "text"; //"text"
-  type = type.replace(/\s+/g, "").toUpperCase();
+
+  type = type.trim().replace(/\s+/g, "_").toUpperCase();
   return {
     name,
     active: true,

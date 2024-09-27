@@ -1,3 +1,4 @@
+import type { User } from "@prisma/client";
 import type { ActionFunctionArgs, MetaFunction } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 
@@ -12,7 +13,9 @@ import Input from "~/components/forms/input";
 import { Button } from "~/components/shared/button";
 import PasswordResetForm from "~/components/user/password-reset-form";
 import ProfilePicture from "~/components/user/profile-picture";
+import { RequestDeleteUser } from "~/components/user/request-delete-user";
 
+import { sendEmail } from "~/emails/mail.server";
 import { useUserData } from "~/hooks/use-user-data";
 import { sendResetPasswordLink } from "~/modules/auth/service.server";
 import {
@@ -24,6 +27,7 @@ import { appendToMetaTitle } from "~/utils/append-to-meta-title";
 import { checkExhaustiveSwitch } from "~/utils/check-exhaustive-switch";
 import { delay } from "~/utils/delay";
 import { sendNotification } from "~/utils/emitter/send-notification.server";
+import { ADMIN_EMAIL, SERVER_URL } from "~/utils/env";
 import { makeShelfError } from "~/utils/error";
 import { isFormProcessing } from "~/utils/form";
 import { getValidationErrors } from "~/utils/http";
@@ -44,11 +48,16 @@ export const UpdateFormSchema = z.object({
 
 const Actions = z.discriminatedUnion("intent", [
   z.object({
-    intent: z.literal("resetPassword"),
+    intent: z.enum(["resetPassword"]),
     email: z.string(),
   }),
   UpdateFormSchema.extend({
     intent: z.literal("updateUser"),
+  }),
+  z.object({
+    intent: z.literal("deleteUser"),
+    email: z.string(),
+    reason: z.string(),
   }),
 ]);
 
@@ -102,6 +111,34 @@ export async function action({ context, request }: ActionFunctionArgs) {
 
         return json(data({ success: true }));
       }
+      case "deleteUser": {
+        let reason = "No reason provided";
+        if ("reason" in payload && payload.reason) {
+          reason = payload?.reason;
+        }
+
+        void sendEmail({
+          to: ADMIN_EMAIL || "support@shelf.nu",
+          subject: "Delete account request",
+          text: `User with id ${userId} and email ${payload.email} has requested to delete their account. \n User: ${SERVER_URL}/admin-dashboard/${userId} \n\n Reason: ${reason}\n\n`,
+        });
+
+        void sendEmail({
+          to: payload.email,
+          subject: "Delete account request received",
+          text: `We have received your request to delete your account. It will be processed within 72 hours.\n\n Kind regards,\nthe Shelf team \n\n`,
+        });
+
+        sendNotification({
+          title: "Account deletion request",
+          message:
+            "Your request has been sent to the admin and will be processed within 24 hours. You will receive an email confirmation.",
+          icon: { name: "success", variant: "success" },
+          senderId: authSession.userId,
+        });
+
+        return json(data({ success: true }));
+      }
       default: {
         checkExhaustiveSwitch(intent);
         return json(data(null));
@@ -132,7 +169,7 @@ export default function UserPage() {
   const transition = useNavigation();
   const disabled = isFormProcessing(transition.state);
   const data = useActionData<typeof action>();
-  const user = useUserData();
+  const user = useUserData() as unknown as User;
   const usernameError =
     getValidationErrors<typeof UpdateFormSchema>(data?.error)?.username
       ?.message || zo.errors.username()?.message;
@@ -268,6 +305,14 @@ export default function UserPage() {
         <p className="text-sm text-gray-600">Update your password here</p>
       </div>
       <PasswordResetForm userEmail={user?.email || ""} />
+
+      <div className="my-6">
+        <h3 className="text-text-lg font-semibold">Delete account</h3>
+        <p className="text-sm text-gray-600">
+          Send a request to delete your account.
+        </p>
+        <RequestDeleteUser />
+      </div>
     </div>
   );
 }

@@ -28,7 +28,7 @@ import {
 } from "~/modules/custom-field/service.server";
 import type { CustomFieldDraftPayload } from "~/modules/custom-field/types";
 import { createLocationsIfNotExists } from "~/modules/location/service.server";
-import { getQr } from "~/modules/qr/service.server";
+import { getQr, parseQrCodesFromImportData } from "~/modules/qr/service.server";
 import { createTagsIfNotExists } from "~/modules/tag/service.server";
 import {
   createTeamMemberIfNotExists,
@@ -47,6 +47,7 @@ import type { ErrorLabel } from "~/utils/error";
 import {
   ShelfError,
   isLikeShelfError,
+  isNotFoundError,
   maybeUniqueConstraintViolation,
 } from "~/utils/error";
 import { getCurrentSearchParams } from "~/utils/http.server";
@@ -102,6 +103,7 @@ export async function getAsset<T extends Prisma.AssetInclude | undefined>({
         "The asset you are trying to access does not exist or you do not have permission to access it.",
       additionalData: { id, organizationId },
       label,
+      shouldBeCaptured: !isNotFoundError(cause),
     });
   }
 }
@@ -139,7 +141,7 @@ async function getAssetsFromView(params: {
   locationIds?: Location["id"][] | null;
   teamMemberIds?: TeamMember["id"][] | null;
 }) {
-  const {
+  let {
     organizationId,
     orderBy,
     orderDirection,
@@ -162,7 +164,9 @@ async function getAssetsFromView(params: {
     const take = perPage >= 1 && perPage <= 100 ? perPage : 20; // min 1 and max 25 per page
 
     /** Default value of where. Takes the assets belonging to current user */
-    let where: Prisma.AssetSearchViewWhereInput = { asset: { organizationId } };
+    let where: Prisma.AssetSearchViewWhereInput = {
+      asset: { organizationId },
+    };
 
     /** If the search string exists, add it to the where object */
     if (search) {
@@ -246,68 +250,109 @@ async function getAssetsFromView(params: {
     }
 
     if (tagsIds && tagsIds.length > 0 && where.asset) {
+      // Check if 'untagged' is part of the selected tag IDs
       if (tagsIds.includes("untagged")) {
+        // Remove 'untagged' from the list of tags
+        tagsIds = tagsIds.filter((id) => id !== "untagged");
+
+        // Filter for assets that are untagged only
         where.asset.OR = [
-          ...(where.asset.OR ?? []),
-          { tags: { some: { id: { in: tagsIds } } } },
-          { tags: { none: {} } },
+          ...(where.asset.OR || []), // Preserve existing AND conditions if any
+          { tags: { none: {} } }, // Include assets with no tags
         ];
-      } else {
-        where.asset.tags = {
-          some: {
-            id: {
-              in: tagsIds,
-            },
-          },
-        };
+      }
+
+      // If there are other tags specified, apply AND condition
+      if (tagsIds.length > 0) {
+        where.asset.OR = [
+          ...(where.asset.OR || []), // Preserve existing AND conditions if any
+          { tags: { some: { id: { in: tagsIds } } } }, // Filter by remaining tags
+        ];
       }
     }
 
     if (locationIds && locationIds.length > 0 && where.asset) {
+      // Check if 'without-location' is part of the selected location IDs
       if (locationIds.includes("without-location")) {
+        // Remove 'without-location' from the list of locations
+        locationIds = locationIds.filter((id) => id !== "without-location");
+
+        // Filter for assets that have no location only
         where.asset.OR = [
-          ...(where.asset.OR ?? []),
-          { locationId: { in: locationIds } },
-          { locationId: null },
+          ...(where.asset.OR || []), // Preserve existing OR conditions if any
+          { locationId: null }, // Include assets with no location
         ];
-      } else {
-        where.asset.location = {
-          id: { in: locationIds },
-        };
+      }
+
+      // If there are other locations specified, apply OR condition
+      if (locationIds.length > 0) {
+        where.asset.OR = [
+          ...(where.asset.OR || []), // Preserve existing OR conditions if any
+          { locationId: { in: locationIds } }, // Filter by remaining locations
+        ];
       }
     }
 
-    if (teamMemberIds && teamMemberIds.length && where.asset) {
-      where.asset.OR = [
-        ...(where.asset.OR ?? []),
-        {
-          custody: { teamMemberId: { in: teamMemberIds } },
-        },
-        {
-          bookings: {
-            some: {
-              custodianTeamMemberId: { in: teamMemberIds },
-              status: {
-                in: ["ONGOING", "OVERDUE"], // Only get bookings that are ongoing or overdue as those are the only states when the asset is actually in custody
+    if (teamMemberIds && teamMemberIds.length > 0 && where.asset) {
+      // Check if "without-custody" is selected
+      const hasWithoutCustody = teamMemberIds.includes("without-custody");
+      // Check if there are other specific team members
+      const hasSpecificTeamMembers = teamMemberIds.some(
+        (id) => id !== "without-custody"
+      );
+      if (hasWithoutCustody && hasSpecificTeamMembers) {
+        // If both conditions are true, logically ensure no results are returned
+        where.asset.AND = [
+          //@ts-expect-error
+          ...(where.asset.AND ?? []),
+          { custody: { is: null } }, // Assets without custody
+          {
+            custody: {
+              teamMemberId: {
+                in: teamMemberIds.filter((id) => id !== "without-custody"),
               },
             },
-          },
-        },
-        {
-          bookings: {
-            some: {
-              custodianUserId: { in: teamMemberIds },
-              status: {
-                in: ["ONGOING", "OVERDUE"],
+          }, // Assets with specific team members
+        ];
+      } else {
+        // Combine conditions using AND to ensure all filters apply together
+        where.asset.AND = [
+          // Preserve any existing AND conditions
+          ...(where.asset.AND ?? []),
+          hasWithoutCustody
+            ? {
+                /** If without custody is selected, get assets without custody  */
+                custody: { is: null },
+              }
+            : {
+                // Use OR to match assets that are in custody of specified team members
+                OR: [
+                  // Assets directly assigned to the specified team members
+                  { custody: { teamMemberId: { in: teamMemberIds } } },
+                  // Assets assigned to the specified team members through an ongoing or overdue booking
+                  {
+                    bookings: {
+                      some: {
+                        custodianTeamMemberId: { in: teamMemberIds },
+                        status: { in: ["ONGOING", "OVERDUE"] },
+                      },
+                    },
+                  },
+                  // Assets assigned to a user who is a member of the specified team through an ongoing or overdue booking
+                  {
+                    bookings: {
+                      some: {
+                        custodianUserId: { in: teamMemberIds },
+                        status: { in: ["ONGOING", "OVERDUE"] },
+                      },
+                    },
+                  },
+                  // Assets in custody of a user who is in the specified team
+                  { custody: { custodian: { userId: { in: teamMemberIds } } } },
+                ],
               },
-            },
-          },
-        },
-        { custody: { custodian: { userId: { in: teamMemberIds } } } },
-        ...(teamMemberIds.includes("without-custody")
-          ? [{ custody: null }]
-          : []),
-      ];
+        ];
+      }
     }
 
     /**
@@ -525,17 +570,11 @@ async function getAssets(params: {
       if (tagsIds.includes("untagged")) {
         where.OR = [
           ...(where.OR ?? []),
-          { tags: { some: { id: { in: tagsIds } } } },
+          { tags: { every: { id: { in: tagsIds } } } },
           { tags: { none: {} } },
         ];
       } else {
-        where.tags = {
-          some: {
-            id: {
-              in: tagsIds,
-            },
-          },
-        };
+        where.AND = tagsIds.map((tagId) => ({ id: tagId }));
       }
     }
 
@@ -701,10 +740,11 @@ export async function createAsset({
      * 2. If the qr code belongs to the current organization
      * 3. If the qr code is not linked to an asset or a kit
      */
-    const qr = qrId ? await getQr(qrId) : null;
+
+    const qr = qrId ? await getQr({ id: qrId }) : null;
     const qrCodes =
       qr &&
-      qr.organizationId === organizationId &&
+      (qr.organizationId === organizationId || !qr.organizationId) &&
       qr.assetId === null &&
       qr.kitId === null
         ? { connect: { id: qrId } }
@@ -1698,6 +1738,12 @@ export async function createAssetsFromContentImport({
   organizationId: Organization["id"];
 }) {
   try {
+    const qrCodesPerAsset = await parseQrCodesFromImportData({
+      data,
+      organizationId,
+      userId,
+    });
+
     const kits = await createKitsIfNotExists({
       data,
       userId,
@@ -1752,6 +1798,7 @@ export async function createAssetsFromContentImport({
         }, [] as ShelfAssetCustomFieldValueType[]);
 
       await createAsset({
+        qrId: qrCodesPerAsset.find((item) => item?.title === asset.title)?.qrId,
         organizationId,
         title: asset.title,
         description: asset.description || "",
@@ -1773,12 +1820,17 @@ export async function createAssetsFromContentImport({
       });
     }
   } catch (cause) {
+    const isShelfError = isLikeShelfError(cause);
     throw new ShelfError({
       cause,
-      message: isLikeShelfError(cause)
+      message: isShelfError
         ? cause?.message
         : "Something went wrong while creating assets from content import",
-      additionalData: { userId, organizationId },
+      additionalData: {
+        userId,
+        organizationId,
+        ...(isShelfError && cause.additionalData),
+      },
       label,
     });
   }
@@ -2248,15 +2300,15 @@ export async function bulkDeleteAssets({
       select: { id: true, mainImage: true },
     });
 
-    return await db.$transaction(async (tx) => {
-      /** Deleting all assets */
-      await tx.asset.deleteMany({
-        where: { id: { in: assets.map((asset) => asset.id) } },
+    try {
+      await db.$transaction(async (tx) => {
+        await tx.asset.deleteMany({
+          where: { id: { in: assets.map((asset) => asset.id) } },
+        });
       });
 
       /** Deleting images of the assets (if any) */
       const assetsWithImages = assets.filter((asset) => !!asset.mainImage);
-
       await Promise.all(
         assetsWithImages.map((asset) =>
           deleteOtherImages({
@@ -2266,11 +2318,23 @@ export async function bulkDeleteAssets({
           })
         )
       );
-    });
+    } catch (cause) {
+      throw new ShelfError({
+        cause,
+        message:
+          "Something went wrong while deleting assets. The transaction was failed.",
+        label: "Assets",
+      });
+    }
   } catch (cause) {
+    const message =
+      cause instanceof ShelfError
+        ? cause.message
+        : "Something went wrong while bulk deleting assets";
+
     throw new ShelfError({
       cause,
-      message: "Something went wrong while bulk deleting assets",
+      message,
       additionalData: { assetIds, organizationId },
       label,
     });
@@ -2596,6 +2660,57 @@ export async function bulkUpdateAssetCategory({
       cause,
       message: "Something went wrong while bulk updating category.",
       additionalData: { userId, assetIds, organizationId, categoryId },
+      label,
+    });
+  }
+}
+
+export async function bulkAssignAssetTags({
+  userId,
+  assetIds,
+  organizationId,
+  tagsIds,
+  currentSearchParams,
+  remove,
+}: {
+  userId: string;
+  assetIds: Asset["id"][];
+  organizationId: Asset["organizationId"];
+  tagsIds: string[];
+  currentSearchParams?: string | null;
+  remove: boolean;
+}) {
+  try {
+    const shouldUpdateAll = assetIds.includes(ALL_SELECTED_KEY);
+    let _assetIds = assetIds;
+
+    if (shouldUpdateAll) {
+      const allOrgAssetIds = await db.asset.findMany({
+        where: getAssetsWhereInput({ organizationId, currentSearchParams }),
+        select: { id: true },
+      });
+      _assetIds = allOrgAssetIds.map((a) => a.id);
+    }
+
+    const updatePromises = _assetIds.map((id) =>
+      db.asset.update({
+        where: { id },
+        data: {
+          tags: {
+            [remove ? "disconnect" : "connect"]: tagsIds.map((id) => ({ id })), // IDs of tags you want to connect
+          },
+        },
+      })
+    );
+
+    await Promise.all(updatePromises);
+
+    return true;
+  } catch (cause) {
+    throw new ShelfError({
+      cause,
+      message: "Something went wrong while bulk updating category.",
+      additionalData: { userId, assetIds, organizationId, tagsIds },
       label,
     });
   }

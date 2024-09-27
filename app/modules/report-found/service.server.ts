@@ -1,7 +1,7 @@
 import type { Asset, Kit, Prisma, ReportFound, User } from "@prisma/client";
 import { db } from "~/database/db.server";
+import { sendEmail } from "~/emails/mail.server";
 import { ShelfError } from "~/utils/error";
-import { sendEmail } from "~/utils/mail.server";
 import { normalizeQrData } from "~/utils/qr";
 
 export async function createReport({
@@ -47,12 +47,12 @@ export async function createReport({
 }
 
 export async function sendReportEmails({
-  owner,
+  ownerEmail,
   message,
   reporterEmail,
   qr,
 }: {
-  owner: User;
+  ownerEmail: User["email"];
   message: ReportFound["content"];
   reporterEmail: ReportFound["email"];
   qr: Prisma.QrGetPayload<{
@@ -73,7 +73,7 @@ export async function sendReportEmails({
     return await Promise.all([
       /** Send email to owner */
       sendEmail({
-        to: owner.email,
+        to: ownerEmail,
         subject,
         text: item
           ? `Your ${type} ${normalizedName} has been reported found. The reason is: \n\n| ${message} \n\n For contact use this email: ${reporterEmail}\n\nEmail sent via shelf.nu\n\n`
@@ -93,7 +93,7 @@ export async function sendReportEmails({
     throw new ShelfError({
       cause,
       message: "Failed to send report emails",
-      additionalData: { owner, reporterEmail, item, type, normalizedName },
+      additionalData: { ownerEmail, reporterEmail, item, type, normalizedName },
       label: "Report",
     });
   }

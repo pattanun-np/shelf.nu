@@ -6,7 +6,7 @@ import {
   type CustomTierLimit,
 } from "@prisma/client";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { useLoaderData, Link, useFetcher } from "@remix-run/react";
 
 import { z } from "zod";
@@ -21,7 +21,7 @@ import { Table, Td, Tr } from "~/components/table";
 import { DeleteUser } from "~/components/user/delete-user";
 import { db } from "~/database/db.server";
 import { updateUserTierId } from "~/modules/tier/service.server";
-import { deleteUser, getUserByID } from "~/modules/user/service.server";
+import { softDeleteUser, getUserByID } from "~/modules/user/service.server";
 import { sendNotification } from "~/utils/emitter/send-notification.server";
 import { makeShelfError, ShelfError } from "~/utils/error";
 import { isFormProcessing } from "~/utils/form";
@@ -33,6 +33,7 @@ import {
   parseData,
 } from "~/utils/http.server";
 import { requireAdmin } from "~/utils/roles.server";
+import { createStripeCustomer } from "~/utils/stripe.server";
 
 export type QrCodeWithAsset = Qr & {
   asset: {
@@ -123,22 +124,14 @@ export const action = async ({
     const { intent } = parseData(
       await request.clone().formData(),
       z.object({
-        intent: z.enum(["updateTier", "updateCustomTierDetails"]),
+        intent: z.enum([
+          "updateTier",
+          "updateCustomTierDetails",
+          "createCustomerId",
+          "deleteUser",
+        ]),
       })
     );
-
-    if (isDelete(request)) {
-      await deleteUser(shelfUserId);
-
-      sendNotification({
-        title: "User deleted",
-        message: "The user has been deleted successfully",
-        icon: { name: "trash", variant: "error" },
-        senderId: userId,
-      });
-
-      return redirect("/admin-dashboard");
-    }
 
     switch (intent) {
       case "updateTier": {
@@ -187,6 +180,27 @@ export const action = async ({
 
         break;
       }
+      case "deleteUser":
+        if (isDelete(request)) {
+          await softDeleteUser(shelfUserId);
+
+          sendNotification({
+            title: "User deleted",
+            message: "The user has been deleted successfully",
+            icon: { name: "trash", variant: "error" },
+            senderId: userId,
+          });
+          return json(data({ success: true }));
+        }
+      case "createCustomerId": {
+        const user = await getUserByID(shelfUserId);
+        await createStripeCustomer({
+          email: user.email,
+          name: `${user.firstName} ${user.lastName}`,
+          userId: user.id,
+        });
+        return json(data(null));
+      }
     }
 
     return json(data(null));
@@ -207,9 +221,7 @@ export default function Area51UserPage() {
       <div>
         <div className="flex justify-between">
           <h1>User: {user?.email}</h1>
-          <div className="flex gap-3">
-            <DeleteUser user={user} />
-          </div>
+          <DeleteUser />
         </div>
         <div className="flex gap-2">
           <div className="w-[400px]">
@@ -224,6 +236,17 @@ export default function Area51UserPage() {
                         <span className="font-semibold">{key}</span>:{" "}
                         {key === "tierId" ? (
                           <TierUpdateForm tierId={user.tierId} />
+                        ) : key === "customerId" && !value ? (
+                          <Form className="inline-block" method="POST">
+                            <input
+                              type="hidden"
+                              name="intent"
+                              value="createCustomerId"
+                            />
+                            <Button type="submit" variant="link" size="sm">
+                              Create customer ID
+                            </Button>
+                          </Form>
                         ) : (
                           <>
                             {typeof value === "string" ? value : null}

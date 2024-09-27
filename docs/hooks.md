@@ -134,3 +134,129 @@ const QRScannerComponent = () => {
   );
 };
 ```
+
+## `useDisabled`
+
+The `useDisabled` hook is used to determine if a button should be disabled during navigation. By default, it operates with the navigation state, but it can optionally accept a fetcher to use as the state.
+
+**Usage:**
+
+```typescript
+/** Without fetcher, using default navigation */
+const isDisabled = useDisabled();
+
+/** Without fetcher */
+const isDisabled = useDisabled(fetcher);
+```
+
+**Parameters:**
+
+- `fetcher` (optional): An object that contains the state to be used. If not provided, the navigation state will be used.
+
+**Returns:**
+
+- `boolean`: Returns `true` if the form is processing and the button should be disabled, otherwise `false`.
+
+**Example:**
+
+```typescript
+import { useDisabled } from './path/to/hooks';
+
+const MyComponent = () => {
+  const fetcher = useFetcher();
+  const isDisabled = useDisabled(fetcher);
+
+  return (
+    <button disabled={isDisabled}>
+      Submit
+    </button>
+  );
+};
+```
+
+**Dependencies:**
+
+- `useNavigation`: A hook that provides the current navigation state.
+- `isFormProcessing`: A function that checks if the form is currently processing based on the state.
+
+## useUserRoleHelper
+
+The `useUserRoleHelper` hook is helps you to always know the roles of the current user and also returns some helper boolean values to make it easier to check for specific roles.
+
+The useUserRoleHelper function returns an object(roles) and helper boolean attributes:
+
+- `roles`: enum that provides role of the current user
+- `isAdministrator`: A boolean value indicating whether the user has the 'ADMIN' role.
+- `isOwner`: A boolean value indicating whether the user has the OWNER role.
+- `isAdministratorOrOwner`: A boolean value indicating whether the user has either the 'ADMIN' or 'OWNER'role.
+- `isSelfService`: A boolean value indicating whether the user has the 'SELF_SERVICE' role.
+- `isBase`: A boolean value indicating whether the user has the 'BASE' role.
+- `isBaseOrSelfService`: A boolean value indicating whether the user has either the BASE or 'SELF_SERVICE' role.
+
+**Usage:**
+The "New Asset" button is rendered only if isAdministratorOrOwner is true.
+
+```typescript
+import React from 'react';
+import { useUserRoleHelper } from '~/hooks/user-user-role-helper';
+
+export default function AssetIndexPage() {
+  const { isAdministratorOrOwner } = useUserRoleHelper();
+
+  return (
+    <div>
+      <header>
+        {isAdministratorOrOwner && (
+          <button>
+            New Asset
+          </button>
+        )}
+      </header>
+    </div>
+  );
+}
+```
+
+**Dependencies:**
+
+- `useRouteLoaderData`: hook from `@remix-run/react` that returns the loader data for a given route by ID.
+
+## `useUserData`
+
+The `useUserData` hook is used to access the current user's data from within any component in the application, particularly those nested under the `_layout` route.
+
+**Overview**
+
+This hook simplifies the process of retrieving user data that is loaded in the `_layout` route. It uses the `useRouteLoaderData` hook from Remix to access the loader data, making it easy to get user information without prop drilling.
+
+**Returns**
+
+- `user`: The user data object from the `_layout` route loader. This typically includes properties like `email` and possibly other user-related information.
+
+**Usage:**
+
+Here's an example of how to use the `useUserData` hook in a component:
+
+```typescript
+import React from 'react';
+import { useUserData } from '~/hooks/use-user-data';
+
+export const RequestDeleteUser = () => {
+  const user = useUserData();
+
+  return (
+    <form>
+      {/* Other form elements */}
+      <input type="hidden" name="email" value={user?.email} />
+      {/* Rest of the component */}
+    </form>
+  );
+}
+```
+
+In this example, the `useUserData` hook is used to retrieve the current user's email address, which is then used in a hidden form field.
+
+## Dependencies
+
+- `useRouteLoaderData`: A hook from `@remix-run/react` that returns the loader data for a given route by ID.
+- `loader` type from `~/routes/_layout+/_layout`: Used to type the loader data.
